@@ -1,0 +1,10 @@
+{
+  "groups": ["Component Libraries"],
+  "sites": [
+    {
+      "name": "Componentry",
+      "url": "https://componentry.dev/docs",
+      "group": "Component Libraries"
+    }
+  ]
+}
