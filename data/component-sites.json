@@ -1,10 +1,44 @@
 {
-  "groups": ["Component Libraries"],
+  "groups": [
+    "Component Libraries",
+    "sites",
+    "tools"
+  ],
   "sites": [
     {
       "name": "Componentry",
       "url": "https://componentry.dev/docs",
       "group": "Component Libraries"
+    },
+    {
+      "name": "https://www.griffin.com/",
+      "url": "https://www.griffin.com/",
+      "group": "sites"
+    },
+    {
+      "name": "https://www.designminis.com/",
+      "url": "https://www.designminis.com/",
+      "group": "tools"
+    },
+    {
+      "name": "https://styles.refero.design/",
+      "url": "https://styles.refero.design/",
+      "group": "sites"
+    },
+    {
+      "name": "https://www.mintlify.com/startups",
+      "url": "https://www.mintlify.com/startups",
+      "group": "sites"
+    },
+    {
+      "name": "https://www.gleap.io",
+      "url": "https://www.gleap.io",
+      "group": "sites"
+    },
+    {
+      "name": "https://x.ai/",
+      "url": "https://x.ai/",
+      "group": "sites"
     }
   ]
 }
