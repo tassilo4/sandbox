@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ASCII Hover Trail</title>
+<style>
+  :root {
+    --background: #ffffff;
+    --foreground: #171717;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: #0a0a0a;
+      --foreground: #ededed;
+    }
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--background);
+    color: var(--foreground);
+  }
+  .stage {
+    position: relative;
+    min-height: 82vh;
+    width: 100%;
+  }
+  #trail {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <canvas id="trail" aria-hidden="true"></canvas>
+  </div>
+
+  <script>
+  /**
+   * A full-bleed canvas that paints a fading trail of tiny ASCII glyphs wherever
+   * the cursor moves — a reverse-engineered take on the hover effect from
+   * openai.com/codex. Cheap by construction: glyphs are pre-baked into an
+   * offscreen atlas and blitted with drawImage (never per-frame fillText), the
+   * loop parks itself when the cursor is idle, and it pauses when scrolled out
+   * of view. Honours prefers-reduced-motion (renders nothing).
+   *
+   * Ported 1:1 from components/ascii-hover-trail.tsx, wired with the same
+   * props used on the /codex-bg page.
+   */
+  (function () {
+    const options = {
+      glyphs: " _>o",
+      cellSize: 10,
+      cellGap: 1,
+      brushRadius: 25,
+      decay: 0.969,
+      follow: 0.01,
+      wander: 17,
+      shimmerFrames: 22,
+      wanderInertia: 0.77,
+      charBias: 0.4,
+      charSpread: 0,
+      momentum: 0.84,
+      kick: 0.1,
+      driftInterval: 29,
+      color: "currentColor",
+    };
+
+    const canvas = document.getElementById("trail");
+    if (!canvas) return;
+
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    if (reduceMotion) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const {
+      glyphs,
+      cellSize,
+      cellGap,
+      brushRadius,
+      decay,
+      follow,
+      wander,
+      shimmerFrames,
+      wanderInertia,
+      charBias,
+      charSpread,
+      momentum,
+      kick,
+      driftInterval,
+      color,
+    } = options;
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // On-screen grid pitch: glyph size + gap. When gap is 0 this equals
+    // cellSize, so behaviour is unchanged; a positive gap pushes cells apart
+    // while each glyph keeps its cellSize dimensions.
+    const cell = cellSize + cellGap;
+    // Resolve `currentColor` to a concrete colour for the atlas.
+    const resolved =
+      color === "currentColor"
+        ? getComputedStyle(canvas).color || "#000"
+        : color;
+
+    // --- glyph atlas ---------------------------------------------------------
+    // One cell per glyph, rendered once at device resolution in the mono font.
+    const cellW = Math.round(cellSize * dpr);
+    const cellH = Math.round(cellSize * 1.4 * dpr);
+    const ramp = [...glyphs];
+    const atlas = document.createElement("canvas");
+    atlas.width = cellW * ramp.length;
+    atlas.height = cellH;
+    const actx = atlas.getContext("2d");
+    const mono = "ui-monospace, monospace";
+    actx.font = `${Math.round(cellH * 0.9)}px ${mono}`;
+    actx.textAlign = "center";
+    actx.textBaseline = "middle";
+    actx.fillStyle = resolved;
+    ramp.forEach((g, i) => {
+      if (g.trim()) actx.fillText(g, i * cellW + cellW / 2, cellH / 2);
+    });
+
+    // --- intensity grid --------------------------------------------------------
+    let cols = 0;
+    let rows = 0;
+    let grid = new Float32Array(0);
+    let noise = new Float32Array(0);
+    // Per-cell mouse direction captured at deposit time (8-way, -1/0/1). When a
+    // cell's character converts as it fades, it advects one cell this way.
+    let dirX = new Int8Array(0);
+    let dirY = new Int8Array(0);
+    // Double buffers for the advection pass.
+    let next = new Float32Array(0);
+    let nDirX = new Int8Array(0);
+    let nDirY = new Int8Array(0);
+    // Current emitter movement direction, quantized to 8-way, set each frame.
+    let depDirX = 0;
+    let depDirY = 0;
+    let frame = 0;
+
+    // small fast integer hash → 0..1, for per-cell temporal glyph flicker
+    const hash = (n) => {
+      n = (n ^ 61) ^ (n >>> 16);
+      n = n + (n << 3);
+      n = n ^ (n >>> 4);
+      n = Math.imul(n, 0x27d4eb2d);
+      n = n ^ (n >>> 15);
+      return (n >>> 0) / 4294967295;
+    };
+
+    const resize = () => {
+      const w = canvas.clientWidth || 1;
+      const h = canvas.clientHeight || 1;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      cols = Math.ceil(w / cell);
+      rows = Math.ceil(h / cell);
+      grid = new Float32Array(cols * rows);
+      // static per-cell noise: ragged brush edges + permanent gaps so the lit
+      // region reads as scattered glyphs rather than a solid disc.
+      noise = new Float32Array(cols * rows);
+      for (let i = 0; i < noise.length; i++) noise[i] = Math.random();
+      dirX = new Int8Array(cols * rows);
+      dirY = new Int8Array(cols * rows);
+      next = new Float32Array(cols * rows);
+      nDirX = new Int8Array(cols * rows);
+      nDirY = new Int8Array(cols * rows);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+
+    // --- pointer ---------------------------------------------------------------
+    // Listen on the window so the trail responds even when content sits on top
+    // of the canvas (which stays pointer-events:none and blocks nothing). Each
+    // move imparts an impulse (the cursor's own velocity) to the emitter; the
+    // frame loop then coasts that velocity under friction with only a weak
+    // spring reeling it back — so the trail keeps flying when the cursor stops.
+    let active = false;
+    let targetX = -1;
+    let targetY = -1;
+    // Emitter state (all in CSS px).
+    let fx = -1; // emitter position
+    let fy = -1;
+    let vx = 0; // emitter velocity (carries momentum)
+    let vy = 0;
+    let pex = -1; // last emitted point (emitter + wander)
+    let pey = -1;
+    let wvx = 0; // damped-random-walk wander velocity
+    let wvy = 0;
+
+    const onMove = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+        active = false;
+        return;
+      }
+      if (!active) {
+        // Snap the emitter to the cursor on entry so it doesn't streak in.
+        active = true;
+        fx = x;
+        fy = y;
+        vx = vy = 0;
+        pex = -1;
+        wvx = wvy = 0;
+        targetX = x;
+        targetY = y;
+        wake();
+        return;
+      }
+      // Impulse: fling the emitter in the direction the cursor just moved.
+      vx += (x - targetX) * kick;
+      vy += (y - targetY) * kick;
+      targetX = x;
+      targetY = y;
+      wake();
+    };
+    const onLeave = () => {
+      active = false;
+    };
+    window.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerleave", onLeave);
+
+    // --- loop --------------------------------------------------------------------
+    let raf = 0;
+    let running = false;
+    let visible = true;
+
+    // Paint one brush dab at a point, with `amp` scaling its brightness.
+    const deposit = (bx, by, amp) => {
+      const cx = bx / cell;
+      const cy = by / cell;
+      const r = brushRadius / cell;
+      const r2 = r * r;
+      const minX = Math.max(0, Math.floor(cx - r));
+      const maxX = Math.min(cols - 1, Math.ceil(cx + r));
+      const minY = Math.max(0, Math.floor(cy - r));
+      const maxY = Math.min(rows - 1, Math.ceil(cy + r));
+      for (let gy = minY; gy <= maxY; gy++) {
+        for (let gx = minX; gx <= maxX; gx++) {
+          const dx = gx + 0.5 - cx;
+          const dy = gy + 0.5 - cy;
+          const d2 = dx * dx + dy * dy;
+          if (d2 > r2) continue;
+          const idx = gy * cols + gx;
+          // Punch out a few cells for organic texture, but keep a clean radial
+          // falloff so the centre is always full (→ densest char) and it steps
+          // down cleanly to the edge.
+          if (noise[idx] < 0.12) continue;
+          const f = (1 - Math.sqrt(d2) / r) * amp;
+          if (f > grid[idx]) {
+            grid[idx] = f;
+            // Remember which way the mouse was going when this cell was made.
+            dirX[idx] = depDirX;
+            dirY[idx] = depDirY;
+          }
+        }
+      }
+    };
+
+    // Advance the lagging emitter one frame: ease toward the cursor, wander,
+    // and lay down glyphs along the path it swept. Because it chases with
+    // easing, the tail keeps being drawn for a moment after the cursor stops
+    // (the drag), then — with nothing driving it — the grid decays away.
+    const advance = () => {
+      if (!active) return;
+      // Coast: keep a fraction (`momentum`) of the velocity each frame, and add
+      // only a weak spring (`follow`) pulling back toward the cursor. High
+      // momentum + weak spring = the emitter keeps flying after the cursor
+      // stops, overshoots, then drifts back — real inertia.
+      vx = vx * momentum + (targetX - fx) * follow;
+      vy = vy * momentum + (targetY - fy) * follow;
+      fx += vx;
+      fy += vy;
+      const moved = Math.hypot(vx, vy);
+      // Wander scales with motion so a settled emitter doesn't drift forever.
+      const drive = Math.min(1, moved / 6);
+      wvx = wvx * wanderInertia + (Math.random() - 0.5) * wander * drive;
+      wvy = wvy * wanderInertia + (Math.random() - 0.5) * wander * drive;
+      const ex = fx + wvx;
+      const ey = fy + wvy;
+      // Quantize the emitter's heading to one of 8 directions — the direction
+      // this stroke's cells will drift when their character converts.
+      const ax = Math.abs(vx);
+      const ay = Math.abs(vy);
+      depDirX = ax > 0.4 * ay ? Math.sign(vx) : 0;
+      depDirY = ay > 0.4 * ax ? Math.sign(vy) : 0;
+      // Full-strength dabs: the density gradient (0 core → > → _ edge) comes
+      // from the brush falloff, not speed, so the char progression always reads.
+      const amp = 1;
+      if (pex >= 0 && moved > 0.1) {
+        const dx = ex - pex;
+        const dy = ey - pey;
+        const segs = Math.min(
+          40,
+          Math.max(1, Math.ceil(Math.hypot(dx, dy) / (cell * 0.6)))
+        );
+        for (let s = 1; s <= segs; s++) {
+          const t = s / segs;
+          deposit(pex + dx * t, pey + dy * t, amp);
+        }
+      }
+      pex = ex;
+      pey = ey;
+    };
+
+    const last = ramp.length - 1;
+    const colOf = (val, r) =>
+      Math.max(
+        1,
+        Math.min(
+          last,
+          Math.round(
+            (charBias === 1 ? val : Math.pow(val, charBias)) * last +
+              (r - 0.5) * charSpread
+          )
+        )
+      );
+
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1; // uniform colour — only the character conveys density
+      next.fill(0); // rebuild the grid fresh each frame (advected)
+      let alive = false;
+      const step = cell * dpr;
+      // Centre the (cellSize-sized) glyph within its (possibly larger) pitch.
+      const offX = (step - cellW) / 2;
+      const offY = (step - cellH) / 2;
+      // reroll glyphs every `shimmerFrames` frames — controls shimmer speed
+      const reroll = Math.floor(frame / Math.max(1, shimmerFrames));
+      // Steady march: every `driftInterval` frames the whole trail advances one
+      // cell along each cell's stored mouse direction, so it flows visibly.
+      const driftTick =
+        driftInterval >= 1 && frame % Math.round(driftInterval) === 0;
+      for (let gy = 0; gy < rows; gy++) {
+        for (let gx = 0; gx < cols; gx++) {
+          const idx = gy * cols + gx;
+          const v0 = grid[idx];
+          if (v0 <= 0.02) continue;
+          const v1 = v0 * decay;
+          if (v1 <= 0.02) continue; // fully faded → drop
+          alive = true;
+          const r = hash(
+            (gx * 73856093) ^ (gy * 19349663) ^ (reroll * 83492791)
+          );
+          const col0 = colOf(v0, r);
+          const col1 = colOf(v1, r);
+          const dX = dirX[idx];
+          const dY = dirY[idx];
+          let tx = gx;
+          let ty = gy;
+          // Drift one cell along the stored mouse direction — on the steady
+          // march cadence, and also whenever the character converts as it fades.
+          if ((driftTick || col1 < col0) && (dX !== 0 || dY !== 0)) {
+            const nx = gx + dX;
+            const ny = gy + dY;
+            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+              tx = nx;
+              ty = ny;
+            }
+          }
+          const tIdx = ty * cols + tx;
+          if (v1 > next[tIdx]) {
+            next[tIdx] = v1;
+            nDirX[tIdx] = dX;
+            nDirY[tIdx] = dY;
+          }
+          ctx.drawImage(
+            atlas,
+            col1 * cellW,
+            0,
+            cellW,
+            cellH,
+            tx * step + offX,
+            ty * step + offY,
+            cellW,
+            cellH
+          );
+        }
+      }
+      // Swap: the advected buffer becomes the live grid for the next frame.
+      [grid, next] = [next, grid];
+      [dirX, nDirX] = [nDirX, dirX];
+      [dirY, nDirY] = [nDirY, dirY];
+      frame++;
+      return alive;
+    };
+
+    const tick = () => {
+      if (!visible) {
+        running = false;
+        return;
+      }
+      // The emitter chases the cursor and paints; the grid then decays + draws.
+      // Once the grid is empty AND the emitter has caught up to a resting
+      // cursor, the trail has fully dissipated — park until the next move.
+      advance();
+      const alive = draw();
+      // Rest = the emitter has coasted to a stop (with no reel-back spring it
+      // won't return to the cursor, so don't gate parking on distance).
+      const settled = !active || Math.hypot(vx, vy) < 0.15;
+      if (!alive && settled) {
+        running = false;
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+
+    const wake = () => {
+      if (running || !visible) return;
+      running = true;
+      raf = requestAnimationFrame(tick);
+    };
+
+    // pause when scrolled out of view
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        visible = entry.isIntersecting;
+        if (visible) wake();
+      },
+      { threshold: 0 }
+    );
+    io.observe(canvas);
+  })();
+  </script>
+</body>
+</html>
