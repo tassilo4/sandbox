@@ -1,3 +1,13 @@
+# Project purpose
+
+This is a personal site where the goal is to build a library of cool UI stuff —
+vendored/recreated components, effects, and experiments, each typically living on
+its own page (see `app/codex-bg`, `app/ascii-wave`).
+
+This site is for personal exploration only — just the owner will ever use it. No
+need for multi-user concerns, production hardening, or polish beyond what's useful
+for trying things out.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
