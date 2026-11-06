@@ -96,6 +96,8 @@ export function PrismGradient({
   const { resolvedTheme } = useTheme();
 
   useEffect(() => {
+    // WebGL is initialized only after the component reaches the browser.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 

@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Interactive UI Lab
 
-## Getting Started
+A collection of interactive graphics, motion studies, and interface experiments built with React and Next.js. Each experiment has its own route and focuses on one visual or interaction technique.
 
-First, run the development server:
+## Experiments
+
+- Image and animation effects rendered as ASCII
+- WebGL dithering, refraction, and animated gradients
+- Canvas particle systems and cursor interactions
+- Magnetic line fields and pointer-aware controls
+- Three-dimensional card and orbit compositions
+
+The home page provides a static index of every experiment. The project intentionally has no database, authentication, external write endpoints, or server-side URL proxying.
+
+## Getting started
 
 ```bash
+git clone https://github.com/tassilo4/sandbox.git
+cd sandbox
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000), then choose an experiment.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Commands
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run dev        # start the development server
+npm run lint       # run ESLint
+npm run typecheck  # check TypeScript without emitting files
+npm run build      # create a production build
+```
 
-## Learn More
+## Adding an experiment
 
-To learn more about Next.js, take a look at the following resources:
+1. Create a route under `app/<experiment-name>/page.tsx`.
+2. Keep reusable rendering logic under `components/`.
+3. Add the experiment to the static index in `app/page.tsx`.
+4. Verify keyboard access, reduced-motion behavior where applicable, and responsive layout.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT
