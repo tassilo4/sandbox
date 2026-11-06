@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { useReducedMotion } from "framer-motion";
+import Image from "next/image";
 import {
   type CSSProperties,
   type FocusEvent,
@@ -114,10 +115,12 @@ function Portrait({ item }: { item: OrbitStackItem }) {
   if (item.image) {
     return (
       <div className={shared}>
-        <img
+        <Image
           src={item.image}
           alt={item.name}
-          className="h-full w-full object-cover"
+          fill
+          sizes="(max-width: 768px) 90vw, 480px"
+          className="object-cover"
         />
         <span className="absolute bottom-4 right-4 rounded-full bg-zinc-950 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-white">
           {initials}

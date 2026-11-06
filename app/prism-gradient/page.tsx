@@ -9,6 +9,8 @@ export default function Page() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Hydration guard: next-themes does not expose the resolved client theme during SSR.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 

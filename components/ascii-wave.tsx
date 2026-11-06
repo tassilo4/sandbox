@@ -137,7 +137,7 @@ export function AsciiWave({
 
   // Main render loop
   const render = React.useCallback(
-    (timestamp: number) => {
+    function renderFrame(timestamp: number) {
       if (!canvasRef.current) return;
       if (!startTimeRef.current) startTimeRef.current = timestamp;
 
@@ -386,7 +386,7 @@ export function AsciiWave({
         }
       }
 
-      animationRef.current = requestAnimationFrame(render);
+      animationRef.current = requestAnimationFrame(renderFrame);
     },
     [getChar, cellWidth, cellHeight, fontSize, sin, TAU, baseColor, colorMix]
   );

@@ -1,6 +1,6 @@
 "use client";
 
-/* eslint-disable react/no-unknown-property */
+/* eslint-disable react-hooks/immutability -- Three.js animation requires mutating shader uniforms and buffer attributes inside useFrame. */
 import { useRef, useMemo, useEffect, useState } from "react";
 import { Canvas, useFrame, ThreeElements, useThree } from "@react-three/fiber";
 import * as THREE from "three";
@@ -449,12 +449,18 @@ const FloatingParticles = ({
         const sizes = new Float32Array(count);
         const phases = new Float32Array(count);
 
+        // Stable pseudo-random values keep particle placement deterministic across renders.
+        const random = (seed: number) => {
+            const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+            return value - Math.floor(value);
+        };
+
         for (let i = 0; i < count; i++) {
-            positions[i * 3] = (Math.random() - 0.5) * 4;
-            positions[i * 3 + 1] = (Math.random() - 0.5) * 4;
-            positions[i * 3 + 2] = (Math.random() - 0.5) * 2;
-            sizes[i] = Math.random() * 3 + 1;
-            phases[i] = Math.random() * Math.PI * 2;
+            positions[i * 3] = (random(i * 5 + 1) - 0.5) * 4;
+            positions[i * 3 + 1] = (random(i * 5 + 2) - 0.5) * 4;
+            positions[i * 3 + 2] = (random(i * 5 + 3) - 0.5) * 2;
+            sizes[i] = random(i * 5 + 4) * 3 + 1;
+            phases[i] = random(i * 5 + 5) * Math.PI * 2;
         }
 
         return { positions, sizes, phases };
@@ -563,6 +569,8 @@ export default function DitherPrismHero({
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
+        // React Three Fiber requires a browser WebGL context.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMounted(true);
     }, []);
 

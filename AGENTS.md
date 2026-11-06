@@ -1,12 +1,12 @@
 # Project purpose
 
-This is a personal site where the goal is to build a library of cool UI stuff —
-vendored/recreated components, effects, and experiments, each typically living on
-its own page (see `app/codex-bg`, `app/ascii-wave`).
+This is a public gallery of UI components, graphics effects, and interaction
+experiments. Each experiment typically lives on its own route (for example,
+`app/codex-bg` or `app/ascii-wave`) and should remain understandable in isolation.
 
-This site is for personal exploration only — just the owner will ever use it. No
-need for multi-user concerns, production hardening, or polish beyond what's useful
-for trying things out.
+Keep the gallery safe to deploy as a static public showcase. Avoid unauthenticated
+mutation endpoints, arbitrary server-side URL fetching, or dependencies on private
+services. New experiments should include a descriptive entry on the home page.
 
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
